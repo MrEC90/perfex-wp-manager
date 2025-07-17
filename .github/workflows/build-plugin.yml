@@ -1,9 +1,9 @@
-name: Build WordPress Plugin ZIP
+name: Build & Release WordPress Plugin
 
 on:
   push:
-    branches:
-      - main
+    tags:
+      - 'v*.*.*'
 
 jobs:
   build:
@@ -35,3 +35,12 @@ jobs:
       with:
         name: wp-manager-connector
         path: dist/*.zip
+
+    - name: Create GitHub Release
+      uses: softprops/action-gh-release@v1
+      with:
+        tag_name: ${{ github.ref_name }}
+        name: Release ${{ github.ref_name }}
+        files: dist/*.zip
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
