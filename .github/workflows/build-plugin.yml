@@ -1,37 +1,75 @@
-name: Build WordPress Plugin ZIP
+name: Package & Release Production Plugins
 
 on:
   push:
     branches:
       - main
+  workflow_dispatch: {}
 
 jobs:
-  build:
+  release:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
 
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v3
+      - name: Checkout
+        uses: actions/checkout@v4
 
-    - name: Set up PHP
-      uses: shivammathur/setup-php@v2
-      with:
-        php-version: '8.0'
+      - name: Create ZIPs for each plugin (with parent folder)
+        run: |
+          mkdir -p packaged
+          for dir in Production/*; do
+            if [ -d "$dir" ]; then
+              slug=$(basename "$dir")
+              
+              # --- MODIFIED VERSION DETECTION ---
+              # First, look for a PHP file named after the slug (e.g., my-plugin/my-plugin.php)
+              main_php="$dir/$slug.php"
+              if [ ! -f "$main_php" ]; then
+                # If not found, fall back to the first PHP file alphabetically
+                main_php=$(ls "$dir"/*.php | head -n 1 || true)
+              fi
+              # --- END MODIFIED SECTION ---
 
-    - name: Extract version from plugin file
-      id: get_version
-      run: |
-        PLUGIN_MAIN_FILE="wp-manager-connect.php"
-        VERSION=$(grep -oP 'Version:\s*\K([0-9]+\.[0-9]+\.[0-9]+)' "$PLUGIN_MAIN_FILE")
-        echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+              # Extract version from the main PHP file
+              version=$(grep -iE "^\s*\*?\s*Version:\s*" "$main_php" | head -n 1 | sed -E 's/^[^:]+:\s*//' | tr -d '[:space:]')
+              if [ -z "$version" ]; then
+                version="0.0.0"
+              fi
+              zip_name="${slug}-${version}.zip"
 
-    - name: Create plugin ZIP
-      run: |
-        mkdir -p dist
-        zip -r "dist/wp-manager-connector-v${{ steps.get_version.outputs.version }}.zip" . -x "*.git*" ".github/*" "dist/*"
+              echo "Packaging $slug (Version: $version) -> $zip_name"
+              
+              # Create a temporary directory structure that matches what WordPress expects
+              temp_build_dir="temp_build"
+              rm -rf "$temp_build_dir" # Clean up previous run
+              mkdir -p "$temp_build_dir/$slug"
+              cp -r "$dir"/. "$temp_build_dir/$slug/"
 
-    - name: Upload ZIP artifact
-      uses: actions/upload-artifact@v4
-      with:
-        name: wp-manager-connector
-        path: dist/*.zip
+              # Zip the parent folder, not just its contents
+              (cd "$temp_build_dir" && zip -r "../packaged/$zip_name" "$slug" > /dev/null)
+              
+              # Clean up
+              rm -rf "$temp_build_dir"
+            fi
+          done
+
+      - name: Clean up previous 'latest' release and tag
+        run: |
+          # This command deletes the release and the underlying 'latest' git tag.
+          gh release delete latest --cleanup-tag --yes || true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create New 'latest' Release and Upload Assets
+        uses: softprops/action-gh-release@v1
+        with:
+          files: packaged/*.zip
+          tag_name: latest
+          name: Production Plugins
+          body: This is the latest automated build from the main branch.
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

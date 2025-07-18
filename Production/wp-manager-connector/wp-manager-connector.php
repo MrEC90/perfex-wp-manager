@@ -3,7 +3,7 @@
  * Plugin Name:       WP Manager Connector
  * Plugin URI:        https://yourwebsite.com
  * Description:       Companion plugin for the Perfex CRM WordPress Manager module.
- * Version:           1.1.2
+ * Version:           1.1.3
  * Author:            Erick Castillo
  * Author URI:        https://www.erick-castillo.com
  * License:           GPL-2.0+
